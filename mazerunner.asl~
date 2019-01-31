@@ -1,0 +1,128 @@
+
+
+/* beliefs */
+
+last_dir(null). // the last movement I did
+op(right,left).
+op(down,up).
+op(left,right).
+op(up,down).
+finished(null).
+
+//did I finish?
++pos(X,Y):final(X,Y)& me(M)<- .print("Finished!!!!",M);+finished(M).
+//tell the others that I finished
++finished(M):me(M)<-.broadcast(tell,finished(M)).
+//trigger a new move
++pos(X,Y)<- !moveavail.
+//tell the others about the choices
++choice(X,Y,A,C)<-.broadcast(tell,choice(X,Y,A,C)).
+//untell the others about the choices
+-choice(X,Y,A,C)<-.broadcast(untell,choice(X,Y,A,C)).
+//tell the others about last choice
++lastchoice(X,Y,M,A)<-.broadcast(tell,lastchoice(X,Y,M,A)).
+//untell the others when I change last choice
+-lastchoice(X,Y,M,A)<-.broadcast(untell,lastchoice(X,Y,M,A)).
+//if I'm finished, don't move anymore
++!moveavail:me(M) & finished(M) <-.print('finished').
+//if someone had finished, and you are on a junction, make the same choice as his last one (regardless of anything)
++!moveavail: finished(V)   & pos(X,Y) & lastchoice(X,Y,V,A) & me(M) & last_dir(Last)& op(Last,B) & deadendfound<-
+			-deadendfound; -+last_dir(A); !addChoice(X,Y,M,A);.print('fogtet about deadendfound');do(A).
++!moveavail: finished(V)   & pos(X,Y) & lastchoice(X,Y,V,A) & me(M) <-
+			-+last_dir(A); !addChoice(X,Y,M,A);.print('following the finished agent');do(A).
+//if in a junction and we the number of deadends starting this junction is a maximum, carry with you deadendfound untill the previous junction
++!moveavail:last_dir(A)& op(A,B)& .count(avail(_))>2 & pos(X,Y) & me(M) & deadendfound & .count(deadend(X,Y,_)) = .count(avail(_))-1 & not deadend(X,Y,S)<-
+				.print('completing');-+last_dir(S);do(S).
+// when you reach a junction and there is a signal of deadendfound, and this junction is not completely discovered, mark this leg as deadend
++!moveavail:last_dir(A)& op(A,B)& .count(avail(_))>2 & pos(X,Y)& me(M)&deadendfound & .count(deadend(X,Y,_)) < .count(avail(_))-1<-
+				!addDeadendfound(X,Y,B);.print('dead end marked');.broadcast(tell,deadend(X,Y,B));!moveavail.
+
+//no last_dir yet, take any available direction, if more than one, mark a choice
++!moveavail: last_dir(null) & .count(avail(_))>1 & avail(A)& pos(X,Y) & me(M) <-
+			 !addChoice(X,Y,M,A); -+last_dir(A); do(A).
+//if only one, just take it
++!moveavail: last_dir(null) & .count(avail(_))=1 & avail(A) <-
+			  -+last_dir(A); do(A).
+//if it's a junction and the current direction is not taken before,  take it and mark it
++!moveavail:last_dir(A) & avail(A) & .count(avail(_))>2 & pos(X,Y)&me(M) & not choice(X,Y,A,C) <-
+			!addChoice(X,Y,M,A); -+last_dir(A); do(A).
+// if it's a junction and the current direction had been taken before, find another one, and mark it
++!moveavail:last_dir(A) & avail(A) & .count(avail(_))>2 & pos(X,Y)&me(M) & avail(B) & not choice(X,Y,B,C) & not A=B  <-
+			.print('drifted to B'); !addChoice(X,Y,M,B); -+last_dir(B); do(B).
+// if it's a junction and all the legs had been visited, and all of them are not deadend, take the one less visited
++!moveavail:last_dir(A) & avail(A) & .count(avail(_))>2 & pos(X,Y)&me(M) & avail(B) & choice(X,Y,A,C1) & choice(X,Y,B,C2) & not deadend(X,Y,A) & not deadend(X,Y,B) <- 
+			if(C1<C2) {.print('repeated A because no other option');!addChoice(X,Y,M,A); -+last_dir(A); do(A)}	
+						else {.print('repeated B because no other option');!addChoice(X,Y,M,B); -+last_dir(B); do(B)}.
+//if it's a junction and all legs had been visited, visit the one that is not deadend
++!moveavail:last_dir(A) & avail(A) & .count(avail(_))>2 & pos(X,Y)&me(M) & avail(B) & choice(X,Y,A,C1) & choice(X,Y,B,C2) & not deadend(X,Y,A)<-
+					!addChoice(X,Y,M,A); -+last_dir(A); do(A).
++!moveavail:last_dir(A) & avail(A) & .count(avail(_))>2 & pos(X,Y)&me(M) & avail(B) & choice(X,Y,A,C1) & choice(X,Y,B,C2) & not deadend(X,Y,B)<-
+					!addChoice(X,Y,M,B); -+last_dir(B); do(B).
+//if only two options, and the current direction is available, just complete, no choices here
++!moveavail:last_dir(A) & avail(A) & .count(avail(_))=2 & avail(B) & not A=B & op(A,B) <- -+last_dir(A); do(A).
+//if there are only two options, and they are not oposite, complete the previous direction if it was not taken before, and mark a choice
++!moveavail:last_dir(A) & avail(A) & .count(avail(_))=2  & me(M) & pos(X,Y) & not choice(X,Y,A,C1) <-
+			 !addChoice(X,Y,M,A); -+last_dir(A); do(A).
+//A is already taken, B is not
++!moveavail:last_dir(A) & avail(A) & .count(avail(_))=2 & avail(B) & not A=B & me(M) & pos(X,Y) & not  choice(X,Y,B,C1) <-
+			 !addChoice(X,Y,M,B); -+last_dir(B);do(B).
+// both A and B are taken, both are not deadends-> choose the one less taken
++!moveavail:last_dir(A) & avail(A) & .count(avail(_))=2 & avail(B) & not A=B & me(M) & pos(X,Y)&choice(X,Y,A,C1) &  choice(X,Y,B,C2) & not deadend(X,Y,A) & not deadend(X,Y,_,B) <-
+			if(C1<C2){ !addChoice(X,Y,M,A);  -+last_dir(A); do(A)}
+						else{ !addChoice(X,Y,M,B); -+last_dir(B); do(B)}.
+//only on 
++!moveavail:last_dir(A) & avail(A) & .count(avail(_))=2 & avail(B) & not A=B & me(M) & pos(X,Y)&choice(X,Y,A,C1) &  choice(X,Y,B,C2) & not deadend(X,Y,A) <-
+			!addChoice(X,Y,M,A);  -+last_dir(A); do(A).
++!moveavail:last_dir(A) & avail(A) & .count(avail(_))=2 & avail(B) & not A=B & me(M) & pos(X,Y)&choice(X,Y,A,C1) &  choice(X,Y,B,C2) & not deadend(X,Y,B) <-
+			!addChoice(X,Y,M,B); -+last_dir(B); do(B).
++!moveavail:last_dir(A) & not avail(A) & .count(avail(_))>2 & pos(X,Y)&me(M)& avail(B) & not op(B,A)& not choice(X,Y,B,C)<-
+			.print('another unvisited direction');  !addChoice(X,Y,M,B); -+last_dir(B);do(B).
++!moveavail:last_dir(A) & not avail(A) & .count(avail(_))>2 & pos(X,Y)&me(M)& avail(B) &  not choice(X,Y,B,C)<-
+			.print('another unvisited direction'); !addChoice(X,Y,M,B);  -+last_dir(B);do(B).
++!moveavail:last_dir(A) & not avail(A) & .count(avail(_))>2 & pos(X,Y)&me(M) & choice(X,Y,B,C1) & choice(X,Y,C,C2) & not B=C & not deadend(X,Y,B) & not deadend(X,Y,C) <-
+			.print(B,C1,C,C2);if(C1<C2) { .print('another visited direction'); !addChoice(X,Y,M,B);  -+last_dir(B); do(B)}
+							else{.print('yet another visited direction'); !addChoice(X,Y,M,C); -+last_dir(C); do(C)}.
++!moveavail:last_dir(A) & not avail(A) & .count(avail(_))>2 & pos(X,Y)&me(M) &avail(B)&   not deadend(X,Y,B) <-
+			!addChoice(X,Y,M,B);  -+last_dir(B); do(B).
++!moveavail:last_dir(A) & not avail(A) & .count(avail(_))=2 & pos(X,Y)&me(M)& avail(B) & avail(C) & not B=C<- .print('only one time ',B,' ',C);
+			
+			if(op(A,B)){-+last_dir(C);do(C)}
+			else
+			{-+last_dir(B);do(B)}.
+
++!moveavail:last_dir(A) & not avail(A) & .count(avail(_))=1& avail(B) <-
+			.print('dead end found'); -+last_dir(B); +deadendfound; do(B).
++!moveavail: avail(A) & .count(avail(_))=1 <-
+			-+last_dir(A);do(A).
+
++!moveavail:true<- !moveavail.
++!addDeadendfound(X,Y,Dir): .count(deadend(X,Y,_)) = .count(avail(_)) -2<-
+					+deadend(X,Y,Dir);.print('propagate dead end');-+deadendfound .
++!addDeadendfound(X,Y,Dir):true<-+deadend(X,Y,Dir); -deadendfound.
+
+
++!addChoice(X,Y,M,Dir):last_dir(From) & op(From,Rev) &choice(X,Y,Dir,C1)& choice(X,Y,Rev,C2)<- 
+					-choice(X,Y,Dir,C1); +choice(X,Y,Dir,C1+1);
+					-choice(X,Y,Rev,C2); +choice(X,Y,Rev,C2+1)
+					;!makelastchoice(X,Y,M,Dir).
++!addChoice(X,Y,M,Dir):last_dir(From)&op(From,Rev)  &choice(X,Y,Dir,C1)<- 
+					-choice(X,Y,Dir,C1); +choice(X,Y,M,Dir,C1+1);
+					 +choice(X,Y,Rev,1);!makelastchoice(X,Y,M,Dir).
++!addChoice(X,Y,M,Dir):last_dir(From)&op(From,Rev) &choice(X,Y,Rev,C2)<- 
+					+choice(X,Y,Dir,1);!makelastchoice(X,Y,M,Dir);
+					 -choice(X,Y,Rev,C2);+choice(X,Y,Rev,C2+1).
+ +!addChoice(X,Y,M,Dir):last_dir(From) &op(From,Rev) <- 
+					+choice(X,Y,Dir,1);
+					 +choice(X,Y,Rev,1);!makelastchoice(X,Y,M,Dir).
++!addChoice(X,Y,M,Dir):last_dir(null) <- 
+					+choice(X,Y,Dir,1);!makelastchoice(X,Y,M,Dir).
++!addChoice(X,Y,M,Dir):true <- 
+					.print("No!").
+					 
++!makelastchoice(X,Y,M,Dir):lastchoice(X,Y,M,S) & not Dir=S<- -lastchoice(X,Y,M,S);+lastchoice(X,Y,M,Dir).
++!makelastchoice(X,Y,M,Dir):lastchoice(X,Y,M,S) & Dir=s<-.print('already last choice there').
++!makelastchoice(X,Y,M,Dir):true<-+lastchoice(X,Y,M,Dir).
+
+/* rules */
+
+
